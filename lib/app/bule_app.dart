@@ -45,8 +45,38 @@ class _BuleAppState extends State<BuleApp> {
     home: ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) => switch (viewModel.loadState) {
-        AppLoadState.loading => const CupertinoPageScaffold(
-          child: SafeArea(child: Center(child: CupertinoActivityIndicator())),
+        AppLoadState.loading => CupertinoPageScaffold(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🫖', style: TextStyle(fontSize: 72)),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Bule',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Learn a little every day',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: CupertinoColors.secondaryLabel.resolveFrom(
+                        context,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const CupertinoActivityIndicator(radius: 12),
+                ],
+              ),
+            ),
+          ),
         ),
         AppLoadState.failure => CupertinoPageScaffold(
           navigationBar: const CupertinoNavigationBar(middle: Text('Bule')),
