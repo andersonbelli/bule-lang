@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../app/app_view_model.dart';
+import '../../../domain/models/content_pack.dart';
 import '../../../domain/models/learning_progress.dart';
+import '../../../domain/services/speech_reader.dart';
 import '../../core/bule_design.dart';
 import 'language_settings_view.dart';
 
@@ -14,6 +16,9 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
+  Future<List<SpeechVoice>>? _voices;
+  String? _voiceLocale;
+
   @override
   Widget build(BuildContext context) => CupertinoPageScaffold(
     navigationBar: const CupertinoNavigationBar(middle: Text('Profile')),
@@ -72,6 +77,8 @@ class _ProfileViewState extends State<ProfileView> {
                 ],
               ),
               const SizedBox(height: BuleSpacing.lg),
+              _voiceSettings(name),
+              const SizedBox(height: BuleSpacing.lg),
               const Text('Private notes', style: BuleTextStyles.cardTitle),
               const SizedBox(height: BuleSpacing.sm),
               if (notes.isEmpty)
@@ -86,6 +93,7 @@ class _ProfileViewState extends State<ProfileView> {
                   _noteCard(
                     widget.viewModel.content!.items[note.key]?.text ?? note.key,
                     note.value,
+                    widget.viewModel.content!.items[note.key],
                   ),
             ],
           );
@@ -94,24 +102,152 @@ class _ProfileViewState extends State<ProfileView> {
     ),
   );
 
-  Widget _noteCard(String item, String note) => Container(
-    margin: const EdgeInsets.only(bottom: BuleSpacing.xs),
-    padding: const EdgeInsets.all(BuleSpacing.sm),
-    decoration: BoxDecoration(
-      color: CupertinoColors.systemOrange
-          .resolveFrom(context)
-          .withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(BuleRadius.card),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(item, style: BuleTextStyles.cardTitle),
-        const SizedBox(height: BuleSpacing.xxs),
-        Text(note, style: BuleTextStyles.supporting),
+  Widget _noteCard(String item, String note, LearningItem? learningItem) =>
+      Container(
+        margin: const EdgeInsets.only(bottom: BuleSpacing.xs),
+        padding: const EdgeInsets.all(BuleSpacing.sm),
+        decoration: BoxDecoration(
+          color: CupertinoColors.systemOrange
+              .resolveFrom(context)
+              .withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(BuleRadius.card),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(item, style: BuleTextStyles.cardTitle)),
+                if (learningItem?.locale ==
+                    widget.viewModel.preferences.learnLocale)
+                  Semantics(
+                    label:
+                        widget.viewModel.audioPlaying &&
+                            widget.viewModel.speakingText == item
+                        ? 'Playing $item'
+                        : 'Listen to $item',
+                    button: true,
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: const Size(36, 36),
+                      onPressed: widget.viewModel.audioPlaying
+                          ? null
+                          : () => widget.viewModel.speakLearningItem(
+                              learningItem!,
+                            ),
+                      child:
+                          widget.viewModel.audioPlaying &&
+                              widget.viewModel.speakingText == item
+                          ? const CupertinoActivityIndicator(radius: 10)
+                          : const Icon(CupertinoIcons.speaker_2_fill, size: 20),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: BuleSpacing.xxs),
+            Text(note, style: BuleTextStyles.supporting),
+          ],
+        ),
+      );
+
+  Widget _voiceSettings(String Function(String) languageName) {
+    final locale = widget.viewModel.preferences.learnLocale!;
+    if (_voiceLocale != locale) {
+      _voiceLocale = locale;
+      _voices = widget.viewModel.availableLearnVoices();
+    }
+    return FutureBuilder<List<SpeechVoice>>(
+      future: _voices,
+      builder: (context, snapshot) {
+        final selectedId = widget.viewModel.selectedLearnVoiceId;
+        final voices = snapshot.data ?? const <SpeechVoice>[];
+        final selected = voices
+            .where(
+              (voice) => voice.id == selectedId || voice.name == selectedId,
+            )
+            .firstOrNull;
+        return CupertinoListSection.insetGrouped(
+          margin: EdgeInsets.zero,
+          header: const Text('SPEECH'),
+          footer: Text(
+            'Used only for ${languageName(locale)} words and phrases.',
+          ),
+          children: [
+            CupertinoListTile(
+              leading: const Icon(
+                CupertinoIcons.speaker_2_fill,
+                color: CupertinoColors.systemPurple,
+              ),
+              title: const Text('Speaker voice'),
+              subtitle: Text(selected?.name ?? 'Automatic'),
+              additionalInfo:
+                  snapshot.connectionState == ConnectionState.waiting
+                  ? const CupertinoActivityIndicator()
+                  : null,
+              trailing: const CupertinoListTileChevron(),
+              onTap: snapshot.hasData
+                  ? () => _chooseVoice(voices, languageName(locale))
+                  : null,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _chooseVoice(List<SpeechVoice> voices, String languageName) {
+    final selectedId = widget.viewModel.selectedLearnVoiceId;
+    return showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text('$languageName speaker'),
+        message: const Text('Choose a voice stored on this device.'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => _saveVoice(null),
+            child: _voiceChoice(
+              'Automatic',
+              selectedId == null ||
+                  !voices.any(
+                    (voice) =>
+                        voice.id == selectedId || voice.name == selectedId,
+                  ),
+            ),
+          ),
+          for (final voice in voices)
+            CupertinoActionSheetAction(
+              onPressed: () => _saveVoice(voice.id),
+              child: _voiceChoice(
+                voice.name,
+                voice.id == selectedId || voice.name == selectedId,
+              ),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceChoice(String name, bool selected) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      if (selected) ...[
+        const Icon(CupertinoIcons.check_mark, size: 18),
+        const SizedBox(width: BuleSpacing.xs),
       ],
-    ),
+      Flexible(child: Text(name)),
+    ],
   );
+
+  Future<void> _saveVoice(String? voiceName) async {
+    await widget.viewModel.selectLearnVoice(voiceName);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    setState(() {});
+  }
 
   Future<void> _editLanguages() async {
     await Navigator.of(context).push(
@@ -119,6 +255,10 @@ class _ProfileViewState extends State<ProfileView> {
         builder: (_) => LanguageSettingsView(viewModel: widget.viewModel),
       ),
     );
-    if (mounted) setState(() {});
+    if (mounted) {
+      _voiceLocale = null;
+      _voices = null;
+      setState(() {});
+    }
   }
 }

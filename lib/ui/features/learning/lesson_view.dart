@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../../domain/models/content_pack.dart';
+import '../../../domain/models/learning_progress.dart';
 import '../../core/bule_design.dart';
 import 'lesson_view_model.dart';
 
@@ -36,7 +37,10 @@ class _LessonViewState extends State<LessonView> {
         middle: Text(widget.viewModel.lesson.title),
         trailing: CupertinoButton(
           padding: EdgeInsets.zero,
-          onPressed: widget.viewModel.loading || widget.viewModel.isComplete
+          onPressed:
+              widget.viewModel.loading ||
+                  widget.viewModel.isComplete ||
+                  !widget.viewModel.canShowNote
               ? null
               : _editNote,
           child: const Icon(CupertinoIcons.pencil),
@@ -75,7 +79,12 @@ class _LessonViewState extends State<LessonView> {
         ),
         const SizedBox(height: BuleSpacing.xs),
         if (exercise.kind == ExerciseKind.flashcard)
-          Text(item.text, style: BuleTextStyles.pageTitle)
+          Row(
+            children: [
+              Expanded(child: Text(item.text, style: BuleTextStyles.pageTitle)),
+              _speechButton(item.text),
+            ],
+          )
         else
           Align(
             alignment: Alignment.centerLeft,
@@ -95,12 +104,18 @@ class _LessonViewState extends State<LessonView> {
             ),
           ),
           const SizedBox(height: BuleSpacing.xxs),
-          Text(item.text, style: BuleTextStyles.cardTitle),
+          Row(
+            children: [
+              Expanded(child: Text(item.text, style: BuleTextStyles.cardTitle)),
+              _speechButton(item.text),
+            ],
+          ),
         ],
         const SizedBox(height: BuleSpacing.lg),
         _exerciseCard(exercise, item),
         const SizedBox(height: BuleSpacing.md),
-        if (viewModel.note.isNotEmpty) _notePreview(viewModel.note),
+        if (viewModel.canShowNote && viewModel.note.isNotEmpty)
+          _notePreview(viewModel.note),
       ],
     );
   }
@@ -121,13 +136,15 @@ class _LessonViewState extends State<LessonView> {
                   color: CupertinoColors.secondaryLabel.resolveFrom(context),
                 ),
               ),
-              Text(
-                '🔥 ${widget.viewModel.currentRunStreak} streak',
-                style: BuleTextStyles.supporting.copyWith(
-                  color: CupertinoColors.activeOrange,
-                  fontWeight: FontWeight.w600,
+              if (widget.viewModel.currentExercise?.kind !=
+                  ExerciseKind.flashcard)
+                Text(
+                  '🔥 ${widget.viewModel.currentRunStreak} streak',
+                  style: BuleTextStyles.supporting.copyWith(
+                    color: CupertinoColors.activeOrange,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: BuleSpacing.xs),
@@ -215,8 +232,8 @@ class _LessonViewState extends State<LessonView> {
         ] else ...[
           Text(
             viewModel.flashcardKnown!
-                ? 'Great — we’ll focus on other vocabulary.'
-                : 'Got it — this will stay in your practice vocabulary.',
+                ? 'You already know this word or phrase. Great job!'
+                : 'You’re still learning this word or phrase. It has been added to your practice vocabulary.',
             style: BuleTextStyles.supporting,
           ),
           const SizedBox(height: BuleSpacing.sm),
@@ -287,30 +304,41 @@ class _LessonViewState extends State<LessonView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final choice in viewModel.currentChoices) ...[
-          CupertinoButton(
-            color: answered && choice == correctAnswer
-                ? CupertinoColors.activeGreen
-                : answered && choice == viewModel.submittedAnswer
-                ? CupertinoColors.destructiveRed
-                : CupertinoColors.systemBackground.resolveFrom(context),
-            disabledColor: choice == correctAnswer
-                ? CupertinoColors.activeGreen.withValues(alpha: 0.72)
-                : CupertinoColors.secondarySystemFill.resolveFrom(context),
-            borderRadius: BorderRadius.circular(BuleRadius.card),
-            onPressed: answered ? null : () => viewModel.submitChoice(choice),
-            child: Text(
-              choice,
-              style: TextStyle(
-                color:
-                    answered &&
-                        (choice == correctAnswer ||
-                            choice == viewModel.submittedAnswer)
-                    ? CupertinoColors.white
-                    : CupertinoColors.label.resolveFrom(context),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+          Row(
+            children: [
+              Expanded(
+                child: CupertinoButton(
+                  color: answered && choice == correctAnswer
+                      ? CupertinoColors.activeGreen
+                      : answered && choice == viewModel.submittedAnswer
+                      ? CupertinoColors.destructiveRed
+                      : CupertinoColors.systemBackground.resolveFrom(context),
+                  disabledColor: choice == correctAnswer
+                      ? CupertinoColors.activeGreen.withValues(alpha: 0.72)
+                      : CupertinoColors.secondarySystemFill.resolveFrom(
+                          context,
+                        ),
+                  borderRadius: BorderRadius.circular(BuleRadius.card),
+                  onPressed: answered
+                      ? null
+                      : () => viewModel.submitChoice(choice),
+                  child: Text(
+                    choice,
+                    style: TextStyle(
+                      color:
+                          answered &&
+                              (choice == correctAnswer ||
+                                  choice == viewModel.submittedAnswer)
+                          ? CupertinoColors.white
+                          : CupertinoColors.label.resolveFrom(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              _speechButton(choice),
+            ],
           ),
           const SizedBox(height: BuleSpacing.xs),
         ],
@@ -470,10 +498,18 @@ class _LessonViewState extends State<LessonView> {
             style: BuleTextStyles.eyebrow.copyWith(color: accent),
           ),
           const SizedBox(height: BuleSpacing.xs),
-          Text(
-            expected,
-            textAlign: TextAlign.center,
-            style: BuleTextStyles.pageTitle.copyWith(fontSize: 28),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  expected,
+                  textAlign: TextAlign.center,
+                  style: BuleTextStyles.pageTitle.copyWith(fontSize: 28),
+                ),
+              ),
+              _speechButton(expected),
+            ],
           ),
           if (highlightDifferences && submitted != null) ...[
             const SizedBox(height: BuleSpacing.sm),
@@ -609,6 +645,7 @@ class _LessonViewState extends State<LessonView> {
                 Expanded(
                   child: Text(item.text, style: BuleTextStyles.cardTitle),
                 ),
+                _speechButton(item.text),
                 Flexible(
                   child: Text(
                     _typingPrompt(item),
@@ -672,9 +709,11 @@ class _LessonViewState extends State<LessonView> {
           padding: const EdgeInsets.only(top: BuleSpacing.sm),
           child: CupertinoTextField(
             controller: controller,
-            placeholder: 'Add a private note for this word or phrase',
+            placeholder:
+                'Add a private note for this word or phrase (up to $maxPersonalNoteLength characters)',
             minLines: 3,
             maxLines: 6,
+            maxLength: maxPersonalNoteLength,
             padding: const EdgeInsets.all(14),
           ),
         ),
@@ -705,7 +744,13 @@ class _LessonViewState extends State<LessonView> {
           padding: const EdgeInsets.only(top: BuleSpacing.sm),
           child: Column(
             children: [
-              _segmentedAnswer(item),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(child: _segmentedAnswer(item)),
+                  _speechButton(item.text),
+                ],
+              ),
               const SizedBox(height: BuleSpacing.sm),
               Text(
                 'Tap a word or expression to see only its contextual translations.',
@@ -752,7 +797,15 @@ class _LessonViewState extends State<LessonView> {
     return showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: Text(segment.text, style: BuleTextStyles.cardTitle),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(segment.text, style: BuleTextStyles.cardTitle),
+            ),
+            _speechButton(segment.text),
+          ],
+        ),
         message: Padding(
           padding: const EdgeInsets.only(top: BuleSpacing.sm),
           child: Column(
@@ -781,6 +834,23 @@ class _LessonViewState extends State<LessonView> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
         ),
+      ),
+    );
+  }
+
+  Widget _speechButton(String text) {
+    final playing = widget.viewModel.audioPlaying;
+    final playingThis = playing && widget.viewModel.speakingText == text;
+    return Semantics(
+      label: playingThis ? 'Playing $text' : 'Listen to $text',
+      button: true,
+      child: CupertinoButton(
+        padding: const EdgeInsets.all(8),
+        minimumSize: const Size(36, 36),
+        onPressed: playing ? null : () => widget.viewModel.speakText(text),
+        child: playingThis
+            ? const CupertinoActivityIndicator(radius: 10)
+            : const Icon(CupertinoIcons.speaker_2_fill, size: 21),
       ),
     );
   }

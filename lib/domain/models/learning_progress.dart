@@ -1,3 +1,5 @@
+const maxPersonalNoteLength = 300;
+
 class ItemProgress {
   const ItemProgress({
     required this.itemId,

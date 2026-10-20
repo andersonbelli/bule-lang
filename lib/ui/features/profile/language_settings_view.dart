@@ -82,19 +82,34 @@ class _LanguageSettingsViewState extends State<LanguageSettingsView> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(BuleRadius.card),
         child: CupertinoListTile(
-          backgroundColor: selected
+          backgroundColor: disabled
+              ? CupertinoColors.secondarySystemFill.resolveFrom(context)
+              : selected
               ? CupertinoColors.activeGreen
                     .resolveFrom(context)
                     .withValues(alpha: 0.10)
               : CupertinoColors.secondarySystemBackground.resolveFrom(context),
-          leading: Text(
-            _flag(language.locale),
-            style: const TextStyle(fontSize: 24),
+          leading: Opacity(
+            opacity: disabled ? 0.45 : 1,
+            child: Text(
+              _flag(language.locale),
+              style: const TextStyle(fontSize: 24),
+            ),
           ),
-          title: Text(language.name, style: BuleTextStyles.cardTitle),
-          subtitle: Text(language.variant),
+          title: Text(
+            language.name,
+            style: BuleTextStyles.cardTitle.copyWith(
+              color: disabled ? CupertinoColors.inactiveGray : null,
+            ),
+          ),
+          subtitle: Text(
+            language.variant,
+            style: TextStyle(
+              color: disabled ? CupertinoColors.inactiveGray : null,
+            ),
+          ),
           trailing: disabled
-              ? const Text('Unavailable')
+              ? null
               : Icon(
                   selected
                       ? CupertinoIcons.check_mark_circled_solid

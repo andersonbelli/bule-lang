@@ -2,14 +2,20 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/repositories/local_app_repository.dart';
+import '../domain/services/speech_reader.dart';
 import '../ui/features/home/home_shell.dart';
 import '../ui/features/onboarding/onboarding_view.dart';
 import '../ui/core/bule_design.dart';
 import 'app_view_model.dart';
 
 class BuleApp extends StatefulWidget {
-  const BuleApp({super.key, required this.repository});
+  const BuleApp({
+    super.key,
+    required this.repository,
+    required this.speechReader,
+  });
   final LocalAppRepository repository;
+  final SpeechReader speechReader;
 
   @override
   State<BuleApp> createState() => _BuleAppState();
@@ -21,7 +27,8 @@ class _BuleAppState extends State<BuleApp> {
   @override
   void initState() {
     super.initState();
-    viewModel = AppViewModel(widget.repository)..initialize();
+    viewModel = AppViewModel(widget.repository, widget.speechReader)
+      ..initialize();
   }
 
   @override

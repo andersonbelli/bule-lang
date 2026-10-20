@@ -147,20 +147,81 @@ class Situation {
     required this.locale,
     required this.title,
     required this.difficulty,
-    required this.estimatedMinutes,
+    required this.titleTranslations,
+    required this.mode,
+    required this.turns,
+    required this.vocabularyItemIds,
+    required this.publicationStatus,
   });
   final String id;
   final String locale;
   final String title;
   final Difficulty difficulty;
-  final int estimatedMinutes;
+  final Map<String, String> titleTranslations;
+  final String mode;
+  final List<SituationTurn> turns;
+  final List<String> vocabularyItemIds;
+  final String publicationStatus;
+
+  int get estimatedMinutes {
+    final words = turns.fold<int>(
+      0,
+      (total, turn) => total + turn.text.trim().split(RegExp(r'\s+')).length,
+    );
+    final learnerTurns = turns
+        .where((turn) => turn.role == SituationRole.learner)
+        .length;
+    return ((words / 110) + (learnerTurns * 25 / 60)).ceil().clamp(1, 60);
+  }
 
   factory Situation.fromJson(Map<String, Object?> json) => Situation(
     id: json['id']! as String,
     locale: json['locale']! as String,
     title: json['title']! as String,
     difficulty: difficultyFromJson(json['difficulty']! as String),
-    estimatedMinutes: json['estimated_minutes']! as int,
+    titleTranslations: (json['title_translations']! as Map<String, Object?>)
+        .map((key, value) => MapEntry(key, value! as String)),
+    mode: json['mode']! as String,
+    turns: (json['turns']! as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .map(SituationTurn.fromJson)
+        .toList(growable: false),
+    vocabularyItemIds: (json['vocabulary_item_ids']! as List<Object?>)
+        .cast<String>(),
+    publicationStatus: json['publication_status']! as String,
+  );
+}
+
+enum SituationRole { computer, learner }
+
+class SituationTurn {
+  const SituationTurn({
+    required this.id,
+    required this.role,
+    required this.text,
+    required this.translations,
+    required this.acceptedAnswers,
+  });
+
+  final String id;
+  final SituationRole role;
+  final String text;
+  final Map<String, String> translations;
+  final List<String> acceptedAnswers;
+
+  factory SituationTurn.fromJson(Map<String, Object?> json) => SituationTurn(
+    id: json['id']! as String,
+    role: switch (json['role']) {
+      'computer' => SituationRole.computer,
+      'learner' => SituationRole.learner,
+      final value => throw FormatException('Unknown Situation role: $value'),
+    },
+    text: json['text']! as String,
+    translations: (json['translations']! as Map<String, Object?>).map(
+      (key, value) => MapEntry(key, value! as String),
+    ),
+    acceptedAnswers: (json['accepted_answers']! as List<Object?>)
+        .cast<String>(),
   );
 }
 

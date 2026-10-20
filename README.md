@@ -32,10 +32,13 @@ Application identifier: `site.cambalhota.bulelang`
 - Missed vocabulary returns sooner; successful reviews use 1, 3, 7, and 14-day intervals.
 - Vocabulary grouped by lesson and prioritized from weaker to stronger answers.
 - Ten-item vocabulary review unlocked after three completed lessons.
+- Offline authored Situation practice with deterministic replies, help and retry states, completion counts, linked vocabulary, voting, and nested comments.
+- Situation feedback unlocks only after completion; linked words enter the learner's vocabulary.
+- Speech playback for Learn-language words, phrases, and Situation dialogue with a locally saved voice selection.
 - Editable Know and Learn selections without deleting previous-language progress.
 - Responsive Cupertino interface for mobile and web.
 
-Community, authenticated synchronization, chats, AI assistance, voice, notifications, and analytics remain planned work.
+Community synchronization, user-authored Situation moderation, chats, AI assistance, notifications, and analytics remain planned work.
 
 ## Project structure
 
@@ -53,7 +56,7 @@ assets/
 docs/                     # Product, architecture, data model, and milestones
 ```
 
-The client follows layered MVVM with constructor injection. Views do not access persistence directly. The bundled content pack is immutable; user progress and notes are stored separately.
+The client follows layered MVVM with constructor injection. Views do not access persistence directly. The bundled content pack is immutable; user progress, notes, and Situation activity are stored separately.
 
 ## Requirements
 

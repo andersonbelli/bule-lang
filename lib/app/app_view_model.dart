@@ -1,21 +1,36 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../data/repositories/local_app_repository.dart';
 import '../domain/models/content_pack.dart';
 import '../domain/models/learning_progress.dart';
+import '../domain/models/situation_progress.dart';
 import '../domain/models/user_preferences.dart';
+import '../domain/services/speech_reader.dart';
 import '../ui/features/learning/lesson_view_model.dart';
+import '../ui/features/situations/situation_view_model.dart';
 
 enum AppLoadState { loading, ready, failure }
 
 class AppViewModel extends ChangeNotifier {
-  AppViewModel(this._repository);
+  AppViewModel(this._repository, this._speechReader) {
+    _speechSubscription = _speechReader.playing.listen((playing) {
+      audioPlaying = playing;
+      if (!playing) speakingText = null;
+      notifyListeners();
+    });
+  }
   final LocalAppRepository _repository;
+  final SpeechReader _speechReader;
+  late final StreamSubscription<bool> _speechSubscription;
 
   AppLoadState loadState = AppLoadState.loading;
   ContentPack? content;
   UserPreferences preferences = const UserPreferences.empty();
   Object? error;
+  bool audioPlaying = false;
+  String? speakingText;
 
   Future<void> initialize() async {
     loadState = AppLoadState.loading;
@@ -42,6 +57,7 @@ class AppViewModel extends ChangeNotifier {
     final next = UserPreferences(
       knowLocales: Set.unmodifiable(knowLocales),
       learnLocale: learnLocale,
+      voiceNamesByLocale: preferences.voiceNamesByLocale,
     );
     await _repository.savePreferences(next);
     preferences = next;
@@ -50,9 +66,11 @@ class AppViewModel extends ChangeNotifier {
 
   LessonViewModel createLessonViewModel(Lesson lesson) => LessonViewModel(
     _repository,
+    speechReader: _speechReader,
     lesson: lesson,
     content: content!,
     knowLocales: preferences.knowLocales,
+    voiceId: preferences.voiceNamesByLocale[lesson.locale],
   );
 
   LessonViewModel createReviewViewModel(List<String> itemIds) {
@@ -70,14 +88,77 @@ class AppViewModel extends ChangeNotifier {
     );
     return LessonViewModel(
       _repository,
+      speechReader: _speechReader,
       lesson: lesson,
       content: content!,
       knowLocales: preferences.knowLocales,
+      voiceId: preferences.voiceNamesByLocale[lesson.locale],
       tracksCompletion: false,
     );
   }
 
+  SituationViewModel createSituationViewModel(Situation situation) =>
+      SituationViewModel(
+        _repository,
+        situation: situation,
+        content: content!,
+        knowLocales: preferences.knowLocales,
+        speechReader: _speechReader,
+        voiceId: preferences.voiceNamesByLocale[situation.locale],
+      );
+
+  Future<SituationProgress> loadSituationProgress() {
+    return _repository.loadSituationProgress();
+  }
+
   Future<LearningProgress> loadLearningProgress() {
     return _repository.loadLearningProgress();
+  }
+
+  Future<void> savePersonalNote(String itemId, String note) async {
+    await _repository.saveNote(itemId, note);
+  }
+
+  Future<void> speakLearningItem(LearningItem item) async {
+    if (item.locale != preferences.learnLocale || audioPlaying) return;
+    speakingText = item.text;
+    notifyListeners();
+    await _speechReader.speak(
+      text: item.text,
+      locale: item.locale,
+      voiceId: preferences.voiceNamesByLocale[item.locale],
+    );
+  }
+
+  Future<List<SpeechVoice>> availableLearnVoices() {
+    return _speechReader.voicesFor(preferences.learnLocale!);
+  }
+
+  String? get selectedLearnVoiceId =>
+      preferences.voiceNamesByLocale[preferences.learnLocale];
+
+  Future<void> selectLearnVoice(String? voiceId) async {
+    final locale = preferences.learnLocale!;
+    final voices = Map<String, String>.of(preferences.voiceNamesByLocale);
+    if (voiceId == null) {
+      voices.remove(locale);
+    } else {
+      voices[locale] = voiceId;
+    }
+    final next = UserPreferences(
+      knowLocales: preferences.knowLocales,
+      learnLocale: locale,
+      voiceNamesByLocale: Map.unmodifiable(voices),
+    );
+    await _repository.savePreferences(next);
+    preferences = next;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_speechSubscription.cancel());
+    unawaited(_speechReader.stop());
+    super.dispose();
   }
 }

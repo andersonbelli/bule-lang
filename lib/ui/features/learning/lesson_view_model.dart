@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/local_app_repository.dart';
 import '../../../domain/models/content_pack.dart';
 import '../../../domain/models/learning_progress.dart';
+import '../../../domain/services/speech_reader.dart';
 import '../../../domain/use_cases/grade_answer.dart';
 
 enum AnswerFeedback { none, correct, almostCorrect, incorrect, selfAssessed }
@@ -16,20 +19,31 @@ class ExerciseOutcome {
 class LessonViewModel extends ChangeNotifier {
   LessonViewModel(
     this._repository, {
+    required this.speechReader,
     required this.lesson,
     required this.content,
     required this.knowLocales,
+    required this.voiceId,
     this.tracksCompletion = true,
-  }) : exercises = _buildExercises(lesson.exercises);
+  }) : exercises = _buildExercises(lesson.exercises) {
+    _speechSubscription = speechReader.playing.listen((playing) {
+      audioPlaying = playing;
+      if (!playing) speakingText = null;
+      notifyListeners();
+    });
+  }
 
   final LocalAppRepository _repository;
   final GradeAnswer _gradeAnswer = const GradeAnswer();
+  final SpeechReader speechReader;
   final Lesson lesson;
   final ContentPack content;
   final Set<String> knowLocales;
+  final String? voiceId;
   final bool tracksCompletion;
   final List<Exercise> exercises;
   final Set<String> _queuedRetries = {};
+  late final StreamSubscription<bool> _speechSubscription;
 
   LearningProgress progress = const LearningProgress.empty();
   final List<ExerciseOutcome> outcomes = [];
@@ -45,6 +59,8 @@ class LessonViewModel extends ChangeNotifier {
   AnswerFeedback feedback = AnswerFeedback.none;
   bool _completionRecorded = false;
   final Set<String> missedItemIds = {};
+  bool audioPlaying = false;
+  String? speakingText;
 
   Exercise? get currentExercise =>
       currentIndex < exercises.length ? exercises[currentIndex] : null;
@@ -59,6 +75,12 @@ class LessonViewModel extends ChangeNotifier {
       : ((currentIndex + 1) / exercises.length).clamp(0, 1);
   String get note =>
       currentItem == null ? '' : progress.notes[currentItem!.id] ?? '';
+  bool get canShowNote => switch (currentExercise?.kind) {
+    ExerciseKind.flashcard => flashcardRated,
+    ExerciseKind.typing ||
+    ExerciseKind.multipleChoice => feedback != AnswerFeedback.none,
+    null => false,
+  };
   int get correctCount => outcomes.where((outcome) => outcome.correct).length;
   int get incorrectCount => outcomes.length - correctCount;
 
@@ -158,7 +180,30 @@ class LessonViewModel extends ChangeNotifier {
     progress = await _repository.saveNote(item.id, value);
   }
 
+  Future<void> speak(LearningItem item) async {
+    if (item.locale != lesson.locale || audioPlaying) return;
+    speakingText = item.text;
+    notifyListeners();
+    await speechReader.speak(
+      text: item.text,
+      locale: item.locale,
+      voiceId: voiceId,
+    );
+  }
+
+  Future<void> speakText(String text) async {
+    if (audioPlaying) return;
+    speakingText = text;
+    notifyListeners();
+    await speechReader.speak(
+      text: text,
+      locale: lesson.locale,
+      voiceId: voiceId,
+    );
+  }
+
   Future<void> next() async {
+    await speechReader.stop();
     currentIndex++;
     translationRevealed = false;
     flashcardRated = false;
@@ -202,4 +247,11 @@ class LessonViewModel extends ChangeNotifier {
         itemId: authored[index].itemId,
       ),
   ];
+
+  @override
+  void dispose() {
+    unawaited(_speechSubscription.cancel());
+    unawaited(speechReader.stop());
+    super.dispose();
+  }
 }

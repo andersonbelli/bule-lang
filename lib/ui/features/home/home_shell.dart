@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import '../../../app/app_view_model.dart';
 import '../../../domain/models/content_pack.dart';
 import '../../../domain/models/learning_progress.dart';
+import '../../../domain/models/situation_progress.dart';
 import '../../core/bule_design.dart';
 import '../learning/lesson_view.dart';
 import '../profile/profile_view.dart';
+import '../situations/situation_view.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.viewModel});
@@ -215,28 +217,66 @@ class _HomeShellState extends State<HomeShell> {
     final situations = widget.viewModel.content!.situations
         .where((item) => item.locale == locale)
         .toList();
-    return _listPage(
-      title: 'Situations',
-      intro:
-          'Practice complete conversations. Vote and comment after completion.',
-      children: [
-        for (final situation in situations)
-          CupertinoListTile(
-            leading: const Icon(
-              CupertinoIcons.chat_bubble_text,
-              color: CupertinoColors.systemTeal,
-            ),
-            title: Text(situation.title, style: BuleTextStyles.cardTitle),
-            subtitle: Text(
-              '${_difficultyLabel(situation.difficulty)} · ${situation.estimatedMinutes} min',
-              style: BuleTextStyles.supporting.copyWith(
-                color: CupertinoColors.secondaryLabel.resolveFrom(context),
+    return FutureBuilder<SituationProgress>(
+      future: widget.viewModel.loadSituationProgress(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const CupertinoPageScaffold(
+            navigationBar: CupertinoNavigationBar(middle: Text('Situations')),
+            child: SafeArea(child: Center(child: CupertinoActivityIndicator())),
+          );
+        }
+        final progress = snapshot.data!;
+        return _listPage(
+          title: 'Situations',
+          intro:
+              'Practice authored conversations. Feedback, voting, and comments unlock after completion.',
+          children: [
+            for (final situation in situations)
+              CupertinoListTile(
+                leading: Icon(
+                  (progress.activities[situation.id]?.completions ?? 0) > 0
+                      ? CupertinoIcons.check_mark_circled_solid
+                      : CupertinoIcons.chat_bubble_text,
+                  color:
+                      (progress.activities[situation.id]?.completions ?? 0) > 0
+                      ? CupertinoColors.activeGreen
+                      : CupertinoColors.systemTeal,
+                ),
+                title: Text(situation.title, style: BuleTextStyles.cardTitle),
+                subtitle: Text(
+                  _situationSubtitle(situation, progress),
+                  style: BuleTextStyles.supporting.copyWith(
+                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                  ),
+                ),
+                trailing: const CupertinoListTileChevron(),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    CupertinoPageRoute<void>(
+                      builder: (_) => SituationView(
+                        viewModel: widget.viewModel.createSituationViewModel(
+                          situation,
+                        ),
+                      ),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
               ),
-            ),
-            trailing: const CupertinoListTileChevron(),
-          ),
-      ],
+          ],
+        );
+      },
     );
+  }
+
+  String _situationSubtitle(Situation situation, SituationProgress progress) {
+    final completions = progress.activities[situation.id]?.completions ?? 0;
+    final details =
+        '${_difficultyLabel(situation.difficulty)} · ${situation.estimatedMinutes} min · Authored';
+    return completions == 0
+        ? details
+        : '$details · Completed $completions ${completions == 1 ? 'time' : 'times'}';
   }
 
   Widget _lessonTile(Lesson lesson, int completionCount) => CupertinoListTile(
@@ -293,43 +333,16 @@ class _HomeShellState extends State<HomeShell> {
           ],
         );
       }
-      final lessons = widget.viewModel.content!.lessons;
-      final assigned = <String>{};
-      final sections = <Widget>[];
-      for (final lesson in lessons) {
-        final lessonEntries =
-            entries
-                .where(
-                  (entry) =>
-                      !assigned.contains(entry.itemId) &&
-                      lesson.itemIds.contains(entry.itemId),
-                )
-                .toList()
-              ..sort(_vocabularyPriority);
-        if (lessonEntries.isEmpty) continue;
-        assigned.addAll(lessonEntries.map((entry) => entry.itemId));
-        sections.add(
-          CupertinoListSection.insetGrouped(
-            margin: const EdgeInsets.only(bottom: BuleSpacing.md),
-            header: Text(lesson.title.toUpperCase()),
-            children: [
-              for (final entry in lessonEntries) _vocabularyTile(entry),
-            ],
-          ),
-        );
-      }
-      final other =
-          entries.where((entry) => !assigned.contains(entry.itemId)).toList()
-            ..sort(_vocabularyPriority);
-      if (other.isNotEmpty) {
-        sections.add(
-          CupertinoListSection.insetGrouped(
-            margin: const EdgeInsets.only(bottom: BuleSpacing.md),
-            header: const Text('OTHER VOCABULARY'),
-            children: [for (final entry in other) _vocabularyTile(entry)],
-          ),
-        );
-      }
+      final currentLocale = widget.viewModel.preferences.learnLocale!;
+      final currentEntries = _vocabularyEntriesForLocale(
+        entries,
+        currentLocale,
+      );
+      final previousLanguages = widget.viewModel.content!.languages.where(
+        (language) =>
+            language.locale != currentLocale &&
+            _vocabularyEntriesForLocale(entries, language.locale).isNotEmpty,
+      );
       return CupertinoPageScaffold(
         navigationBar: const CupertinoNavigationBar(middle: Text('Vocabulary')),
         child: SafeArea(
@@ -339,18 +352,171 @@ class _HomeShellState extends State<HomeShell> {
               const Text('Vocabulary', style: BuleTextStyles.pageTitle),
               const SizedBox(height: BuleSpacing.xs),
               Text(
-                '${entries.length} encountered words and phrases, grouped by lesson.',
+                '${entries.length} encountered words and phrases. Your current language appears first.',
                 style: BuleTextStyles.supporting.copyWith(
                   color: CupertinoColors.secondaryLabel.resolveFrom(context),
                 ),
               ),
               const SizedBox(height: BuleSpacing.md),
-              ...sections,
+              _vocabularyLanguageHeader(
+                currentLocale,
+                currentEntries.length,
+                current: true,
+              ),
+              const SizedBox(height: BuleSpacing.sm),
+              if (currentEntries.isEmpty)
+                _emptyVocabularyLanguage()
+              else
+                ..._vocabularyLessonSections(currentEntries, currentLocale),
+              if (previousLanguages.isNotEmpty) ...[
+                const SizedBox(height: BuleSpacing.lg),
+                Text(
+                  'PREVIOUS LANGUAGES',
+                  style: BuleTextStyles.eyebrow.copyWith(
+                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                  ),
+                ),
+                const SizedBox(height: BuleSpacing.sm),
+                for (final language in previousLanguages) ...[
+                  _vocabularyLanguageHeader(
+                    language.locale,
+                    _vocabularyEntriesForLocale(
+                      entries,
+                      language.locale,
+                    ).length,
+                    current: false,
+                  ),
+                  const SizedBox(height: BuleSpacing.sm),
+                  ..._vocabularyLessonSections(
+                    _vocabularyEntriesForLocale(entries, language.locale),
+                    language.locale,
+                  ),
+                  const SizedBox(height: BuleSpacing.md),
+                ],
+              ],
             ],
           ),
         ),
       );
     },
+  );
+
+  List<ItemProgress> _vocabularyEntriesForLocale(
+    List<ItemProgress> entries,
+    String locale,
+  ) => entries
+      .where(
+        (entry) =>
+            widget.viewModel.content!.items[entry.itemId]?.locale == locale,
+      )
+      .toList();
+
+  List<Widget> _vocabularyLessonSections(
+    List<ItemProgress> entries,
+    String locale,
+  ) {
+    final assigned = <String>{};
+    final sections = <Widget>[];
+    final lessons = widget.viewModel.content!.lessons.where(
+      (lesson) => lesson.locale == locale,
+    );
+    for (final lesson in lessons) {
+      final lessonEntries =
+          entries
+              .where(
+                (entry) =>
+                    !assigned.contains(entry.itemId) &&
+                    lesson.itemIds.contains(entry.itemId),
+              )
+              .toList()
+            ..sort(_vocabularyPriority);
+      if (lessonEntries.isEmpty) continue;
+      assigned.addAll(lessonEntries.map((entry) => entry.itemId));
+      sections.add(
+        CupertinoListSection.insetGrouped(
+          margin: const EdgeInsets.only(bottom: BuleSpacing.md),
+          header: Text(lesson.title.toUpperCase()),
+          children: [for (final entry in lessonEntries) _vocabularyTile(entry)],
+        ),
+      );
+    }
+    final other =
+        entries.where((entry) => !assigned.contains(entry.itemId)).toList()
+          ..sort(_vocabularyPriority);
+    if (other.isNotEmpty) {
+      sections.add(
+        CupertinoListSection.insetGrouped(
+          margin: const EdgeInsets.only(bottom: BuleSpacing.md),
+          header: const Text('OTHER VOCABULARY'),
+          children: [for (final entry in other) _vocabularyTile(entry)],
+        ),
+      );
+    }
+    return sections;
+  }
+
+  Widget _vocabularyLanguageHeader(
+    String locale,
+    int count, {
+    required bool current,
+  }) {
+    final language = widget.viewModel.content!.languages.firstWhere(
+      (language) => language.locale == locale,
+    );
+    final accent = current
+        ? CupertinoColors.activeGreen
+        : CupertinoColors.systemPurple;
+    return Container(
+      padding: const EdgeInsets.all(BuleSpacing.md),
+      decoration: BoxDecoration(
+        color: accent.resolveFrom(context).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(BuleRadius.card),
+        border: Border.all(
+          color: accent.resolveFrom(context).withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(_flag(locale), style: const TextStyle(fontSize: 30)),
+          const SizedBox(width: BuleSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  current ? 'CURRENTLY LEARNING' : 'SAVED LANGUAGE',
+                  style: BuleTextStyles.eyebrow.copyWith(color: accent),
+                ),
+                const SizedBox(height: BuleSpacing.xxs),
+                Text(
+                  '${language.name} · ${language.variant}',
+                  style: BuleTextStyles.cardTitle,
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$count',
+            style: BuleTextStyles.cardTitle.copyWith(color: accent),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyVocabularyLanguage() => Container(
+    margin: const EdgeInsets.only(bottom: BuleSpacing.md),
+    padding: const EdgeInsets.all(BuleSpacing.md),
+    decoration: BoxDecoration(
+      color: CupertinoColors.secondarySystemBackground.resolveFrom(context),
+      borderRadius: BorderRadius.circular(BuleRadius.card),
+    ),
+    child: Text(
+      'Start a lesson to add vocabulary for this language.',
+      style: BuleTextStyles.supporting.copyWith(
+        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+      ),
+    ),
   );
 
   Widget _vocabularyTile(ItemProgress progress) {
@@ -381,7 +547,14 @@ class _HomeShellState extends State<HomeShell> {
           color: CupertinoColors.secondaryLabel.resolveFrom(context),
         ),
       ),
-      trailing: const CupertinoListTileChevron(),
+      trailing:
+          item != null &&
+              item.locale == widget.viewModel.preferences.learnLocale
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [_speechButton(item), const CupertinoListTileChevron()],
+            )
+          : const CupertinoListTileChevron(),
       onTap: item == null ? null : () => _showVocabularyTranslations(item),
     );
   }
@@ -419,12 +592,22 @@ class _HomeShellState extends State<HomeShell> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _showVocabularyTranslations(LearningItem item) {
+  Future<void> _showVocabularyTranslations(LearningItem item) async {
     final languages = widget.viewModel.content!.languages;
-    return showCupertinoModalPopup<void>(
+    final progress = await widget.viewModel.loadLearningProgress();
+    if (!mounted) return;
+    final note = progress.notes[item.id] ?? '';
+    final editNote = await showCupertinoModalPopup<bool>(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: Text(item.text, style: BuleTextStyles.cardTitle),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(child: Text(item.text, style: BuleTextStyles.cardTitle)),
+            if (item.locale == widget.viewModel.preferences.learnLocale)
+              _speechButton(item),
+          ],
+        ),
         message: Padding(
           padding: const EdgeInsets.only(top: BuleSpacing.sm),
           child: Column(
@@ -461,13 +644,109 @@ class _HomeShellState extends State<HomeShell> {
                     ],
                   ),
                 ),
+              if (note.isNotEmpty) ...[
+                const SizedBox(height: BuleSpacing.sm),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(BuleSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemOrange
+                        .resolveFrom(context)
+                        .withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(BuleRadius.card),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PERSONAL NOTE',
+                        style: BuleTextStyles.eyebrow.copyWith(
+                          color: CupertinoColors.activeOrange,
+                        ),
+                      ),
+                      const SizedBox(height: BuleSpacing.xxs),
+                      Text(note, style: BuleTextStyles.supporting),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              note.isEmpty ? 'Add personal note' : 'Edit personal note',
+            ),
+          ),
+        ],
         cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Close'),
         ),
+      ),
+    );
+    if (editNote == true && mounted) {
+      await _editVocabularyNote(item, note);
+    }
+  }
+
+  Future<void> _editVocabularyNote(
+    LearningItem item,
+    String currentNote,
+  ) async {
+    final controller = TextEditingController(text: currentNote);
+    final saved = await showCupertinoModalPopup<bool>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text('Note for ${item.text}'),
+        message: Padding(
+          padding: const EdgeInsets.only(top: BuleSpacing.sm),
+          child: CupertinoTextField(
+            controller: controller,
+            placeholder:
+                'Add a private note (up to $maxPersonalNoteLength characters)',
+            minLines: 3,
+            maxLines: 6,
+            maxLength: maxPersonalNoteLength,
+            padding: const EdgeInsets.all(14),
+          ),
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              await widget.viewModel.savePersonalNote(item.id, controller.text);
+              if (context.mounted) Navigator.of(context).pop(true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (saved == true && mounted) setState(() {});
+  }
+
+  Widget _speechButton(LearningItem item) {
+    final playing = widget.viewModel.audioPlaying;
+    final playingThis = playing && widget.viewModel.speakingText == item.text;
+    return Semantics(
+      label: playingThis ? 'Playing ${item.text}' : 'Listen to ${item.text}',
+      button: true,
+      child: CupertinoButton(
+        padding: const EdgeInsets.all(8),
+        minimumSize: const Size(36, 36),
+        onPressed: playing
+            ? null
+            : () => widget.viewModel.speakLearningItem(item),
+        child: playingThis
+            ? const CupertinoActivityIndicator(radius: 10)
+            : const Icon(CupertinoIcons.speaker_2_fill, size: 20),
       ),
     );
   }
