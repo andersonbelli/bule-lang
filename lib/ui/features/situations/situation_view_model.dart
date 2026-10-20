@@ -95,18 +95,6 @@ class SituationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void useSuggestion() {
-    final turn = currentTurn;
-    if (turn == null) return;
-    helpVisible = true;
-    usedHelp = true;
-    currentTurnUsedHelp = true;
-    submittedAnswer = turn.text;
-    lastAnswerCorrect = true;
-    responseAccepted = true;
-    notifyListeners();
-  }
-
   Future<void> next() async {
     await speechReader.stop();
     final turn = currentTurn;

@@ -101,11 +101,14 @@ class _SituationViewState extends State<SituationView> {
 
   Widget _conversationBubble(SituationTurn turn) {
     final learner = turn.role == SituationRole.learner;
-    return Align(
-      alignment: learner ? Alignment.centerRight : Alignment.centerLeft,
+    final character = Text(
+      learner ? '🙂' : '🧑',
+      style: const TextStyle(fontSize: 28),
+      semanticsLabel: learner ? 'Learner' : 'Conversation partner',
+    );
+    final bubble = Flexible(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
-        margin: const EdgeInsets.only(bottom: BuleSpacing.sm),
         padding: const EdgeInsets.all(BuleSpacing.sm),
         decoration: BoxDecoration(
           color:
@@ -122,6 +125,18 @@ class _SituationViewState extends State<SituationView> {
             _speechButton(turn.text),
           ],
         ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: BuleSpacing.sm),
+      child: Row(
+        mainAxisAlignment: learner
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: learner
+            ? [bubble, const SizedBox(width: BuleSpacing.xs), character]
+            : [character, const SizedBox(width: BuleSpacing.xs), bubble],
       ),
     );
   }
@@ -141,11 +156,17 @@ class _SituationViewState extends State<SituationView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'YOUR TURN',
-            style: BuleTextStyles.eyebrow.copyWith(
-              color: CupertinoColors.activeBlue,
-            ),
+          Row(
+            children: [
+              const Text('🙂', style: TextStyle(fontSize: 24)),
+              const SizedBox(width: BuleSpacing.xs),
+              Text(
+                'YOUR TURN',
+                style: BuleTextStyles.eyebrow.copyWith(
+                  color: CupertinoColors.activeBlue,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: BuleSpacing.xs),
           Text(viewModel.promptFor(turn), style: BuleTextStyles.cardTitle),
@@ -210,14 +231,6 @@ class _SituationViewState extends State<SituationView> {
                       _speechButton(turn.text),
                     ],
                   ),
-                  if (!viewModel.responseAccepted)
-                    CupertinoButton(
-                      onPressed: () {
-                        _answerController.text = turn.text;
-                        viewModel.useSuggestion();
-                      },
-                      child: const Text('Use this reply'),
-                    ),
                 ],
               ),
             ),
