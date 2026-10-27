@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../../domain/models/content_pack.dart';
 import '../../../domain/models/situation_progress.dart';
 import '../../core/bule_design.dart';
+import '../../core/language_keyboard.dart';
 import 'situation_view_model.dart';
 
 class SituationView extends StatefulWidget {
@@ -36,6 +37,15 @@ class _SituationViewState extends State<SituationView> {
     builder: (context, _) => CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text(widget.viewModel.situation.title),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: widget.viewModel.toggleAutoPlay,
+          child: Icon(
+            widget.viewModel.autoPlayAudio
+                ? CupertinoIcons.speaker_2_fill
+                : CupertinoIcons.speaker_slash_fill,
+          ),
+        ),
       ),
       child: SafeArea(
         child: widget.viewModel.loading
@@ -178,6 +188,13 @@ class _SituationViewState extends State<SituationView> {
             minLines: 2,
             maxLines: 4,
             padding: const EdgeInsets.all(14),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: BuleSpacing.xs),
+          LanguageKeyboard(
+            locale: viewModel.situation.locale,
+            controller: _answerController,
+            expectedText: turn.acceptedAnswers.join(' '),
           ),
           const SizedBox(height: BuleSpacing.sm),
           if (!viewModel.responseAccepted)
@@ -195,7 +212,9 @@ class _SituationViewState extends State<SituationView> {
                 const SizedBox(width: BuleSpacing.sm),
                 Expanded(
                   child: CupertinoButton.filled(
-                    onPressed: _submit,
+                    onPressed: _answerController.text.trim().isEmpty
+                        ? null
+                        : _submit,
                     child: const Text('Check reply'),
                   ),
                 ),

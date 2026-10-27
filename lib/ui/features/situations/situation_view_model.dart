@@ -45,6 +45,7 @@ class SituationViewModel extends ChangeNotifier {
   bool _completionRecorded = false;
   bool audioPlaying = false;
   String? speakingText;
+  bool autoPlayAudio = true;
 
   SituationTurn? get currentTurn => currentIndex < situation.turns.length
       ? situation.turns[currentIndex]
@@ -68,6 +69,9 @@ class SituationViewModel extends ChangeNotifier {
         progress.activities[situation.id] ?? const SituationActivity.empty();
     loading = false;
     notifyListeners();
+    if (currentTurn?.role == SituationRole.computer) {
+      await speak(currentTurn!.text);
+    }
   }
 
   String promptFor(SituationTurn turn) {
@@ -85,6 +89,15 @@ class SituationViewModel extends ChangeNotifier {
     submittedAnswer = answer.trim();
     lastAnswerCorrect = result.correct;
     responseAccepted = result.correct;
+    notifyListeners();
+    if (autoPlayAudio && currentTurn?.role == SituationRole.computer) {
+      await speak(currentTurn!.text);
+    }
+  }
+
+  Future<void> toggleAutoPlay() async {
+    autoPlayAudio = !autoPlayAudio;
+    if (!autoPlayAudio) await speechReader.stop();
     notifyListeners();
   }
 
