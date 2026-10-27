@@ -6,6 +6,7 @@ import '../../../domain/models/learning_progress.dart';
 import '../../../domain/services/speech_reader.dart';
 import '../../core/bule_design.dart';
 import 'language_settings_view.dart';
+import 'speaker_selection_view.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key, required this.viewModel});
@@ -178,75 +179,45 @@ class _ProfileViewState extends State<ProfileView> {
                 CupertinoIcons.speaker_2_fill,
                 color: CupertinoColors.systemPurple,
               ),
-              title: const Text('Speaker voice'),
-              subtitle: Text(selected?.name ?? 'Automatic'),
+              title: const Text('Choose your speaker'),
+              subtitle: Text('Selected: ${selected?.name ?? 'Automatic'}'),
               additionalInfo:
                   snapshot.connectionState == ConnectionState.waiting
                   ? const CupertinoActivityIndicator()
                   : null,
               trailing: const CupertinoListTileChevron(),
               onTap: snapshot.hasData
-                  ? () => _chooseVoice(voices, languageName(locale))
+                  ? () async {
+                      await Navigator.of(context).push(
+                        CupertinoPageRoute<void>(
+                          builder: (_) =>
+                              SpeakerSelectionView(viewModel: widget.viewModel),
+                        ),
+                      );
+                      if (mounted) setState(() {});
+                    }
                   : null,
+            ),
+            CupertinoListTile(
+              leading: const Icon(
+                CupertinoIcons.play_circle_fill,
+                color: CupertinoColors.systemPurple,
+              ),
+              title: const Text('Voice example'),
+              subtitle: Text('“${widget.viewModel.learnVoicePreviewPhrase}”'),
+              trailing: widget.viewModel.audioPlaying
+                  ? const CupertinoActivityIndicator()
+                  : const Icon(CupertinoIcons.speaker_2),
+              onTap: widget.viewModel.audioPlaying
+                  ? null
+                  : () => widget.viewModel.previewVoice(
+                      widget.viewModel.selectedLearnVoiceId,
+                    ),
             ),
           ],
         );
       },
     );
-  }
-
-  Future<void> _chooseVoice(List<SpeechVoice> voices, String languageName) {
-    final selectedId = widget.viewModel.selectedLearnVoiceId;
-    return showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text('$languageName speaker'),
-        message: const Text('Choose a voice stored on this device.'),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () => _saveVoice(null),
-            child: _voiceChoice(
-              'Automatic',
-              selectedId == null ||
-                  !voices.any(
-                    (voice) =>
-                        voice.id == selectedId || voice.name == selectedId,
-                  ),
-            ),
-          ),
-          for (final voice in voices)
-            CupertinoActionSheetAction(
-              onPressed: () => _saveVoice(voice.id),
-              child: _voiceChoice(
-                voice.name,
-                voice.id == selectedId || voice.name == selectedId,
-              ),
-            ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-      ),
-    );
-  }
-
-  Widget _voiceChoice(String name, bool selected) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      if (selected) ...[
-        const Icon(CupertinoIcons.check_mark, size: 18),
-        const SizedBox(width: BuleSpacing.xs),
-      ],
-      Flexible(child: Text(name)),
-    ],
-  );
-
-  Future<void> _saveVoice(String? voiceName) async {
-    await widget.viewModel.selectLearnVoice(voiceName);
-    if (!mounted) return;
-    Navigator.of(context).pop();
-    setState(() {});
   }
 
   Future<void> _editLanguages() async {
