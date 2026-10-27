@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 
@@ -8,6 +10,7 @@ import '../../../domain/models/situation_progress.dart';
 import '../../core/bule_design.dart';
 import '../learning/lesson_view.dart';
 import '../profile/profile_view.dart';
+import '../profile/speaker_selection_view.dart';
 import '../situations/situation_view.dart';
 
 class HomeShell extends StatefulWidget {
@@ -20,6 +23,12 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _selected = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.viewModel.preloadLearnVoice());
+  }
 
   static const _destinations = [
     ('Learn', CupertinoIcons.book),
@@ -65,12 +74,18 @@ class _HomeShellState extends State<HomeShell> {
           width: 220,
           color: CupertinoColors.secondarySystemBackground.resolveFrom(context),
           child: CupertinoListSection.insetGrouped(
-            header: Text(
-              'BULE . LANGUAGE LEARNING',
-              textAlign: TextAlign.center,
-              style: BuleTextStyles.eyebrow.copyWith(
-                color: CupertinoColors.activeGreen,
-              ),
+            header: Column(
+              children: [
+                Image.asset('assets/app_icon.png', width: 48, height: 48),
+                const SizedBox(height: BuleSpacing.xs),
+                Text(
+                  'BULE . LANGUAGE LEARNING',
+                  textAlign: TextAlign.center,
+                  style: BuleTextStyles.eyebrow.copyWith(
+                    color: CupertinoColors.activeGreen,
+                  ),
+                ),
+              ],
             ),
             children: [
               for (var index = 0; index < _destinations.length; index++)
@@ -143,6 +158,7 @@ class _HomeShellState extends State<HomeShell> {
         final available = lessons.where(
           (lesson) => !completions.containsKey(lesson.id),
         );
+        final recommendedDifficulty = _recommendedDifficulty;
         final completed = lessons.where(
           (lesson) => completions.containsKey(lesson.id),
         );
@@ -160,6 +176,8 @@ class _HomeShellState extends State<HomeShell> {
                     color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   ),
                 ),
+                const SizedBox(height: BuleSpacing.md),
+                _streakCard(progress),
                 const SizedBox(height: BuleSpacing.md),
                 if (completions.length > 2) ...[
                   CupertinoListSection.insetGrouped(
@@ -186,13 +204,26 @@ class _HomeShellState extends State<HomeShell> {
                   const SizedBox(height: BuleSpacing.md),
                 ],
                 if (available.isNotEmpty)
-                  CupertinoListSection.insetGrouped(
-                    margin: EdgeInsets.zero,
-                    header: const Text('CONTINUE LEARNING'),
-                    children: [
-                      for (final lesson in available) _lessonTile(lesson, 0),
+                  for (final difficulty in Difficulty.values)
+                    if (available.any(
+                      (lesson) => lesson.difficulty == difficulty,
+                    )) ...[
+                      CupertinoListSection.insetGrouped(
+                        margin: EdgeInsets.zero,
+                        header: Text(
+                          difficulty == recommendedDifficulty
+                              ? 'RECOMMENDED FOR YOUR LEVEL'
+                              : '${_difficultyLabel(difficulty).toUpperCase()} LESSONS',
+                        ),
+                        children: [
+                          for (final lesson in available.where(
+                            (lesson) => lesson.difficulty == difficulty,
+                          ))
+                            _lessonTile(lesson, 0),
+                        ],
+                      ),
+                      const SizedBox(height: BuleSpacing.md),
                     ],
-                  ),
                 if (completed.isNotEmpty) ...[
                   const SizedBox(height: BuleSpacing.md),
                   CupertinoListSection.insetGrouped(
@@ -214,9 +245,16 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _situationsPage() {
     final locale = widget.viewModel.preferences.learnLocale!;
-    final situations = widget.viewModel.content!.situations
-        .where((item) => item.locale == locale)
-        .toList();
+    final situations =
+        widget.viewModel.content!.situations
+            .where((item) => item.locale == locale)
+            .toList()
+          ..sort((left, right) {
+            final target = _recommendedDifficulty.index;
+            return (left.difficulty.index - target).abs().compareTo(
+              (right.difficulty.index - target).abs(),
+            );
+          });
     return FutureBuilder<SituationProgress>(
       future: widget.viewModel.loadSituationProgress(),
       builder: (context, snapshot) {
@@ -230,7 +268,7 @@ class _HomeShellState extends State<HomeShell> {
         return _listPage(
           title: 'Situations',
           intro:
-              'Practice authored conversations. Feedback, voting, and comments unlock after completion.',
+              'Suggested for your ${widget.viewModel.preferences.placementLevel} level first. Feedback, voting, and comments unlock after completion.',
           children: [
             for (final situation in situations)
               CupertinoListTile(
@@ -272,8 +310,11 @@ class _HomeShellState extends State<HomeShell> {
 
   String _situationSubtitle(Situation situation, SituationProgress progress) {
     final completions = progress.activities[situation.id]?.completions ?? 0;
+    final recommended = situation.difficulty == _recommendedDifficulty
+        ? 'Suggested · '
+        : '';
     final details =
-        '${_difficultyLabel(situation.difficulty)} · ${situation.estimatedMinutes} min · Authored';
+        '$recommended${_difficultyLabel(situation.difficulty)} · ${situation.estimatedMinutes} min · Authored';
     return completions == 0
         ? details
         : '$details · Completed $completions ${completions == 1 ? 'time' : 'times'}';
@@ -291,8 +332,8 @@ class _HomeShellState extends State<HomeShell> {
     title: Text(lesson.title, style: BuleTextStyles.cardTitle),
     subtitle: Text(
       completionCount > 0
-          ? 'Completed $completionCount ${completionCount == 1 ? 'time' : 'times'} · ${_difficultyLabel(lesson.difficulty)}'
-          : '${_difficultyLabel(lesson.difficulty)} · ${lesson.itemIds.length} words and phrases · ${lesson.estimatedMinutes} min',
+          ? 'Completed $completionCount ${completionCount == 1 ? 'time' : 'times'} · ${_lessonTone(lesson)} tone'
+          : '${lesson.itemIds.length} words and phrases · ${lesson.estimatedMinutes} min · ${_lessonTone(lesson)} tone',
       style: BuleTextStyles.supporting.copyWith(
         color: CupertinoColors.secondaryLabel.resolveFrom(context),
       ),
@@ -303,12 +344,79 @@ class _HomeShellState extends State<HomeShell> {
         CupertinoPageRoute<void>(
           builder: (_) => LessonView(
             viewModel: widget.viewModel.createLessonViewModel(lesson),
+            showClickableTranslationTip:
+                !widget.viewModel.preferences.clickableTranslationTipSeen,
+            onClickableTranslationOpened:
+                widget.viewModel.markClickableTranslationTipSeen,
           ),
         ),
       );
+      final latest = await widget.viewModel.loadLearningProgress();
+      if (mounted &&
+          latest.lessonCompletions.values.fold<int>(
+                0,
+                (sum, count) => sum + count,
+              ) ==
+              1 &&
+          !widget.viewModel.preferences.voiceTipShown) {
+        await _showVoiceTip();
+      }
       if (mounted) setState(() {});
     },
   );
+
+  Widget _streakCard(LearningProgress progress) {
+    final isBest =
+        progress.currentDayStreak > 0 &&
+        progress.currentDayStreak == progress.bestDayStreak;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      padding: const EdgeInsets.all(BuleSpacing.md),
+      decoration: BoxDecoration(
+        color:
+            (isBest ? CupertinoColors.systemOrange : CupertinoColors.systemGrey)
+                .withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(BuleRadius.card),
+      ),
+      child: Row(
+        children: [
+          Text(isBest ? '🔥🎉' : '🔥', style: const TextStyle(fontSize: 30)),
+          const SizedBox(width: BuleSpacing.sm),
+          Expanded(
+            child: Text(
+              isBest
+                  ? '${progress.currentDayStreak} ${progress.currentDayStreak == 1 ? 'day' : 'days'} — your best streak so far!'
+                  : '${progress.currentDayStreak} day streak\nBest: ${progress.bestDayStreak} days',
+              style: BuleTextStyles.cardTitle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _lessonTone(Lesson lesson) {
+    final registers = lesson.itemIds
+        .map((id) => widget.viewModel.content!.items[id]?.register ?? 'neutral')
+        .toSet();
+    final hasInformal = registers.any((value) => value.contains('informal'));
+    final hasFormal = registers.any(
+      (value) => value == 'formal' || value.contains('polite'),
+    );
+    if (hasInformal) return 'Informal';
+    if (hasFormal) return 'Formal';
+    return 'Formal';
+  }
+
+  Future<void> _showVoiceTip() async {
+    await widget.viewModel.markVoiceTipShown();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => SpeakerSelectionView(viewModel: widget.viewModel),
+      ),
+    );
+  }
 
   Widget _vocabularyPage() => FutureBuilder<LearningProgress>(
     future: widget.viewModel.loadLearningProgress(),
@@ -586,6 +694,10 @@ class _HomeShellState extends State<HomeShell> {
           viewModel: widget.viewModel.createReviewViewModel(
             itemIds.take(10).toList(),
           ),
+          showClickableTranslationTip:
+              !widget.viewModel.preferences.clickableTranslationTipSeen,
+          onClickableTranslationOpened:
+              widget.viewModel.markClickableTranslationTipSeen,
         ),
       ),
     );
@@ -809,6 +921,13 @@ class _HomeShellState extends State<HomeShell> {
     Difficulty.moderate => 'Moderate',
     Difficulty.native => 'Native',
   };
+
+  Difficulty get _recommendedDifficulty =>
+      switch (widget.viewModel.preferences.placementLevel) {
+        'advanced' => Difficulty.native,
+        'intermediate' => Difficulty.moderate,
+        _ => Difficulty.easy,
+      };
 
   Color _destinationColor(int index) => switch (index) {
     0 => CupertinoColors.activeBlue,
