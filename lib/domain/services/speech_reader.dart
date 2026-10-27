@@ -17,6 +17,9 @@ abstract interface class SpeechReader {
 
   Future<List<SpeechVoice>> voicesFor(String locale);
 
+  /// Loads and configures the selected on-device voice without speaking.
+  Future<void> prepare({required String locale, String? voiceId});
+
   Future<void> speak({
     required String text,
     required String locale,

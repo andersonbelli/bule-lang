@@ -18,6 +18,7 @@ class FlutterSpeechReader implements SpeechReader {
   String? _configuredLocale;
   String? _configuredVoiceId;
   bool _isPlaying = false;
+  Future<void>? _configuration;
 
   @override
   Stream<bool> get playing => _playingController.stream;
@@ -51,6 +52,20 @@ class FlutterSpeechReader implements SpeechReader {
   }
 
   @override
+  Future<void> prepare({required String locale, String? voiceId}) async {
+    if (_configuredLocale == locale && _configuredVoiceId == voiceId) return;
+    if (_configuration case final pending?) await pending;
+    if (_configuredLocale == locale && _configuredVoiceId == voiceId) return;
+    final pending = _configure(locale, voiceId);
+    _configuration = pending;
+    try {
+      await pending;
+    } finally {
+      if (identical(_configuration, pending)) _configuration = null;
+    }
+  }
+
+  @override
   Future<void> speak({
     required String text,
     required String locale,
@@ -63,9 +78,7 @@ class FlutterSpeechReader implements SpeechReader {
     _setPlaying(true);
 
     try {
-      if (_configuredLocale != locale || _configuredVoiceId != voiceId) {
-        await _configure(locale, voiceId);
-      }
+      await prepare(locale: locale, voiceId: voiceId);
       final result = await _engine.speak(value);
       if (result != 1) {
         await _engine.setLanguage(locale);
@@ -85,7 +98,12 @@ class FlutterSpeechReader implements SpeechReader {
     await _engine.setVolume(1.0);
     await _engine.setPitch(1.0);
 
-    final voices = await voicesFor(locale);
+    List<SpeechVoice> voices;
+    try {
+      voices = await voicesFor(locale);
+    } on Object {
+      voices = const [];
+    }
     final selected = voiceId == null
         ? voices.firstOrNull
         : voices

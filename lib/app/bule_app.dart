@@ -5,6 +5,7 @@ import '../data/repositories/local_app_repository.dart';
 import '../domain/services/speech_reader.dart';
 import '../ui/features/home/home_shell.dart';
 import '../ui/features/onboarding/onboarding_view.dart';
+import '../ui/features/onboarding/placement_view.dart';
 import '../ui/core/bule_design.dart';
 import 'app_view_model.dart';
 
@@ -110,9 +111,11 @@ class _BuleAppState extends State<BuleApp> {
           ),
         ),
         AppLoadState.ready =>
-          viewModel.preferences.hasCompletedOnboarding
-              ? HomeShell(viewModel: viewModel)
-              : OnboardingView(viewModel: viewModel),
+          !viewModel.preferences.hasCompletedOnboarding
+              ? OnboardingView(viewModel: viewModel)
+              : viewModel.preferences.placementLevel == null
+              ? PlacementView(viewModel: viewModel)
+              : HomeShell(viewModel: viewModel),
       },
     ),
   );

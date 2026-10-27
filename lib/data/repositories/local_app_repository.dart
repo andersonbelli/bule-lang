@@ -52,6 +52,9 @@ class LocalAppRepository {
       items: items,
       notes: progress.notes,
       lessonCompletions: progress.lessonCompletions,
+      currentDayStreak: progress.currentDayStreak,
+      bestDayStreak: progress.bestDayStreak,
+      lastPracticeDate: progress.lastPracticeDate,
     );
     await _learningStore.write(next);
     return next;
@@ -75,6 +78,9 @@ class LocalAppRepository {
       items: items,
       notes: progress.notes,
       lessonCompletions: progress.lessonCompletions,
+      currentDayStreak: progress.currentDayStreak,
+      bestDayStreak: progress.bestDayStreak,
+      lastPracticeDate: progress.lastPracticeDate,
     );
     await _learningStore.write(next);
     return next;
@@ -98,6 +104,9 @@ class LocalAppRepository {
       items: progress.items,
       notes: notes,
       lessonCompletions: progress.lessonCompletions,
+      currentDayStreak: progress.currentDayStreak,
+      bestDayStreak: progress.bestDayStreak,
+      lastPracticeDate: progress.lastPracticeDate,
     );
     await _learningStore.write(next);
     return next;
@@ -117,10 +126,23 @@ class LocalAppRepository {
     final progress = await _learningStore.read();
     final completions = Map<String, int>.of(progress.lessonCompletions)
       ..update(lessonId, (count) => count + 1, ifAbsent: () => 1);
+    final today = DateTime.now();
+    final todayKey = _dateKey(today);
+    final yesterdayKey = _dateKey(today.subtract(const Duration(days: 1)));
+    final streak = progress.lastPracticeDate == todayKey
+        ? progress.currentDayStreak
+        : progress.lastPracticeDate == yesterdayKey
+        ? progress.currentDayStreak + 1
+        : 1;
     final next = LearningProgress(
       items: progress.items,
       notes: progress.notes,
       lessonCompletions: completions,
+      currentDayStreak: streak,
+      bestDayStreak: streak > progress.bestDayStreak
+          ? streak
+          : progress.bestDayStreak,
+      lastPracticeDate: todayKey,
     );
     await _learningStore.write(next);
     return next;
@@ -158,6 +180,9 @@ class LocalAppRepository {
         items: items,
         notes: learning.notes,
         lessonCompletions: learning.lessonCompletions,
+        currentDayStreak: learning.currentDayStreak,
+        bestDayStreak: learning.bestDayStreak,
+        lastPracticeDate: learning.lastPracticeDate,
       ),
     );
     return nextActivity;
@@ -220,4 +245,7 @@ class LocalAppRepository {
     await _situationStore.write(SituationProgress(activities));
     return next;
   }
+
+  String _dateKey(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }

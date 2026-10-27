@@ -25,10 +25,15 @@ class GradeAnswer {
       );
     }
     final normalized = _normalize(answer);
+    final lenient = _stripDiacritics(normalized);
     var bestAnswer = answers.first;
     var bestSimilarity = 0.0;
     for (final accepted in answers) {
-      final similarity = _similarity(normalized, _normalize(accepted));
+      final acceptedNormalized = _normalize(accepted);
+      final similarity = _semanticSimilarity(
+        lenient,
+        _stripDiacritics(acceptedNormalized),
+      );
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestAnswer = accepted;
@@ -36,7 +41,7 @@ class GradeAnswer {
     }
     return GradeResult(
       correct: bestSimilarity >= 0.8,
-      exact: bestSimilarity == 1,
+      exact: answers.any((accepted) => normalized == _normalize(accepted)),
       similarity: bestSimilarity,
       acceptedAnswer: bestAnswer,
     );
@@ -48,6 +53,28 @@ class GradeAnswer {
       .replaceAll(RegExp(r'[‘’]'), "'")
       .replaceAll(RegExp(r'\s+'), ' ')
       .replaceFirst(RegExp(r'[.!?…]+$'), '');
+
+  double _semanticSimilarity(String left, String right) {
+    final editScore = _similarity(left, right);
+    final leftWords = left.split(' ').where((word) => word.isNotEmpty).toSet();
+    final rightWords = right
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .toSet();
+    if (leftWords.isEmpty || rightWords.isEmpty) return editScore;
+    final overlap = leftWords.intersection(rightWords).length;
+    final tokenScore = (2 * overlap) / (leftWords.length + rightWords.length);
+    return editScore > tokenScore ? editScore : tokenScore;
+  }
+
+  String _stripDiacritics(String value) {
+    const accented = 'áàâãäåéèêëíìîïóòôõöúùûüçñýÿšžõäöü';
+    const plain = 'aaaaaaeeeeiiiiooooouuuucnyysooaou';
+    return value.split('').map((character) {
+      final index = accented.indexOf(character);
+      return index < 0 ? character : plain[index];
+    }).join();
+  }
 
   double _similarity(String left, String right) {
     final longest = left.length > right.length ? left.length : right.length;

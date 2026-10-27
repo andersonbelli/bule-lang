@@ -48,15 +48,24 @@ class LearningProgress {
     required this.items,
     required this.notes,
     required this.lessonCompletions,
+    this.currentDayStreak = 0,
+    this.bestDayStreak = 0,
+    this.lastPracticeDate,
   });
   const LearningProgress.empty()
     : items = const {},
       notes = const {},
-      lessonCompletions = const {};
+      lessonCompletions = const {},
+      currentDayStreak = 0,
+      bestDayStreak = 0,
+      lastPracticeDate = null;
 
   final Map<String, ItemProgress> items;
   final Map<String, String> notes;
   final Map<String, int> lessonCompletions;
+  final int currentDayStreak;
+  final int bestDayStreak;
+  final String? lastPracticeDate;
 
   factory LearningProgress.fromJson(Map<String, Object?> json) {
     final itemJson = (json['items'] as Map<String, Object?>?) ?? const {};
@@ -74,6 +83,9 @@ class LearningProgress {
       lessonCompletions: completionJson.map(
         (key, value) => MapEntry(key, value! as int),
       ),
+      currentDayStreak: json['current_day_streak'] as int? ?? 0,
+      bestDayStreak: json['best_day_streak'] as int? ?? 0,
+      lastPracticeDate: json['last_practice_date'] as String?,
     );
   }
 
@@ -81,5 +93,8 @@ class LearningProgress {
     'items': items.map((key, value) => MapEntry(key, value.toJson())),
     'notes': notes,
     'lesson_completions': lessonCompletions,
+    'current_day_streak': currentDayStreak,
+    'best_day_streak': bestDayStreak,
+    'last_practice_date': lastPracticeDate,
   };
 }

@@ -61,12 +61,14 @@ class _OnboardingViewState extends State<OnboardingView> {
                 Text(
                   switch (_step) {
                     0 =>
-                      'Know languages are languages you speak fluently or natively. Choose one or more.',
+                      'Select every language you speak. You can choose more than one.',
                     1 => 'Choose exactly one language to practice.',
                     _ =>
                       'Check your choices before saving them on this device.',
                   },
                   style: BuleTextStyles.body.copyWith(
+                    fontSize: _step == 0 ? 19 : null,
+                    fontWeight: _step == 0 ? FontWeight.w600 : null,
                     color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   ),
                 ),
@@ -222,6 +224,10 @@ class _OnboardingViewState extends State<OnboardingView> {
           color: CupertinoColors.systemTeal,
           locales: _know,
           names: names(_know),
+        ),
+        CupertinoButton(
+          onPressed: () => setState(() => _step = 0),
+          child: const Text('Add or change known languages'),
         ),
         const SizedBox(height: BuleSpacing.md),
         _reviewSelection(

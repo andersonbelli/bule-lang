@@ -8,6 +8,9 @@ class PreferencesStore {
   static const _knowKey = 'know_locales';
   static const _learnKey = 'learn_locale';
   static const _voicesKey = 'voice_names_by_locale';
+  static const _placementKey = 'placement_level';
+  static const _voiceTipKey = 'voice_tip_shown';
+  static const _translationTipKey = 'clickable_translation_tip_seen';
 
   Future<UserPreferences> read() async {
     final preferences = await SharedPreferences.getInstance();
@@ -16,6 +19,10 @@ class PreferencesStore {
           .toSet(),
       learnLocale: preferences.getString(_learnKey),
       voiceNamesByLocale: _readVoiceNames(preferences.getString(_voicesKey)),
+      placementLevel: preferences.getString(_placementKey),
+      voiceTipShown: preferences.getBool(_voiceTipKey) ?? false,
+      clickableTranslationTipSeen:
+          preferences.getBool(_translationTipKey) ?? false,
     );
   }
 
@@ -33,6 +40,16 @@ class PreferencesStore {
     await preferences.setString(
       _voicesKey,
       jsonEncode(value.voiceNamesByLocale),
+    );
+    if (value.placementLevel case final level?) {
+      await preferences.setString(_placementKey, level);
+    } else {
+      await preferences.remove(_placementKey);
+    }
+    await preferences.setBool(_voiceTipKey, value.voiceTipShown);
+    await preferences.setBool(
+      _translationTipKey,
+      value.clickableTranslationTipSeen,
     );
   }
 
