@@ -3,11 +3,19 @@ import 'package:flutter/cupertino.dart';
 import '../../../domain/models/content_pack.dart';
 import '../../../domain/models/learning_progress.dart';
 import '../../core/bule_design.dart';
+import '../../core/language_keyboard.dart';
 import 'lesson_view_model.dart';
 
 class LessonView extends StatefulWidget {
-  const LessonView({super.key, required this.viewModel});
+  const LessonView({
+    super.key,
+    required this.viewModel,
+    this.showClickableTranslationTip = false,
+    this.onClickableTranslationOpened,
+  });
   final LessonViewModel viewModel;
+  final bool showClickableTranslationTip;
+  final Future<void> Function()? onClickableTranslationOpened;
 
   @override
   State<LessonView> createState() => _LessonViewState();
@@ -15,6 +23,7 @@ class LessonView extends StatefulWidget {
 
 class _LessonViewState extends State<LessonView> {
   final _answerController = TextEditingController();
+  bool _translationTipOpened = false;
 
   @override
   void initState() {
@@ -35,15 +44,31 @@ class _LessonViewState extends State<LessonView> {
     builder: (context, _) => CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text(widget.viewModel.lesson.title),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed:
-              widget.viewModel.loading ||
-                  widget.viewModel.isComplete ||
-                  !widget.viewModel.canShowNote
-              ? null
-              : _editNote,
-          child: const Icon(CupertinoIcons.pencil),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CupertinoButton(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              onPressed: widget.viewModel.loading
+                  ? null
+                  : widget.viewModel.toggleAutoPlay,
+              child: Icon(
+                widget.viewModel.autoPlayAudio
+                    ? CupertinoIcons.speaker_2_fill
+                    : CupertinoIcons.speaker_slash_fill,
+              ),
+            ),
+            CupertinoButton(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              onPressed:
+                  widget.viewModel.loading ||
+                      widget.viewModel.isComplete ||
+                      !widget.viewModel.canShowNote
+                  ? null
+                  : _editNote,
+              child: const Icon(CupertinoIcons.pencil),
+            ),
+          ],
         ),
       ),
       child: SafeArea(
@@ -65,6 +90,23 @@ class _LessonViewState extends State<LessonView> {
       children: [
         _progress(),
         const SizedBox(height: BuleSpacing.lg),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemPurple.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(BuleRadius.header),
+            ),
+            child: Text(
+              '${_toneLabel(item.register)} TONE',
+              style: BuleTextStyles.eyebrow.copyWith(
+                color: CupertinoColors.systemPurple,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: BuleSpacing.sm),
         Text(
           switch (exercise.kind) {
             ExerciseKind.flashcard => 'FLASHCARD',
@@ -109,6 +151,32 @@ class _LessonViewState extends State<LessonView> {
               Expanded(child: Text(item.text, style: BuleTextStyles.cardTitle)),
               _speechButton(item.text),
             ],
+          ),
+        ],
+        if (widget.showClickableTranslationTip &&
+            !_translationTipOpened &&
+            item.segments.any((segment) => segment.clickable)) ...[
+          const SizedBox(height: BuleSpacing.sm),
+          Container(
+            padding: const EdgeInsets.all(BuleSpacing.sm),
+            decoration: BoxDecoration(
+              color: CupertinoColors.activeBlue.withValues(alpha: .10),
+              borderRadius: BorderRadius.circular(BuleRadius.card),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  CupertinoIcons.lightbulb_fill,
+                  color: CupertinoColors.activeBlue,
+                ),
+                SizedBox(width: BuleSpacing.xs),
+                Expanded(
+                  child: Text(
+                    'Tip: tap the prompt, then tap an underlined word or phrase to see its contextual translation.',
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
         const SizedBox(height: BuleSpacing.lg),
@@ -267,6 +335,12 @@ class _LessonViewState extends State<LessonView> {
           textInputAction: TextInputAction.done,
           onSubmitted: answered ? null : (_) => _submit(),
         ),
+        const SizedBox(height: BuleSpacing.xs),
+        LanguageKeyboard(
+          locale: item.locale,
+          controller: _answerController,
+          expectedText: item.acceptedAnswers.join(' '),
+        ),
         const SizedBox(height: BuleSpacing.sm),
         if (!answered)
           CupertinoButton.filled(
@@ -312,6 +386,8 @@ class _LessonViewState extends State<LessonView> {
                       ? CupertinoColors.activeGreen
                       : answered && choice == viewModel.submittedAnswer
                       ? CupertinoColors.destructiveRed
+                      : !answered && choice == viewModel.selectedChoice
+                      ? CupertinoColors.activeBlue.withValues(alpha: .18)
                       : CupertinoColors.systemBackground.resolveFrom(context),
                   disabledColor: choice == correctAnswer
                       ? CupertinoColors.activeGreen.withValues(alpha: 0.72)
@@ -321,7 +397,7 @@ class _LessonViewState extends State<LessonView> {
                   borderRadius: BorderRadius.circular(BuleRadius.card),
                   onPressed: answered
                       ? null
-                      : () => viewModel.submitChoice(choice),
+                      : () => viewModel.selectChoice(choice),
                   child: Text(
                     choice,
                     style: TextStyle(
@@ -341,6 +417,15 @@ class _LessonViewState extends State<LessonView> {
             ],
           ),
           const SizedBox(height: BuleSpacing.xs),
+        ],
+        if (!answered) ...[
+          const SizedBox(height: BuleSpacing.xs),
+          CupertinoButton.filled(
+            onPressed: viewModel.selectedChoice == null
+                ? null
+                : () => viewModel.submitChoice(viewModel.selectedChoice!),
+            child: const Text('Confirm answer'),
+          ),
         ],
         if (answered) _feedbackAndNext(item),
         if (viewModel.feedback == AnswerFeedback.incorrect)
@@ -694,6 +779,14 @@ class _LessonViewState extends State<LessonView> {
     await widget.viewModel.submitTypedAnswer(_answerController.text);
   }
 
+  String _toneLabel(String register) {
+    if (register.contains('informal')) return 'INFORMAL';
+    if (register.contains('formal') || register.contains('polite')) {
+      return 'FORMAL';
+    }
+    return 'FORMAL';
+  }
+
   Future<void> _next() async {
     _answerController.clear();
     await widget.viewModel.next();
@@ -794,6 +887,8 @@ class _LessonViewState extends State<LessonView> {
   );
 
   Future<void> _showSegmentTranslations(LearningSegment segment) {
+    widget.onClickableTranslationOpened?.call();
+    setState(() => _translationTipOpened = true);
     return showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(

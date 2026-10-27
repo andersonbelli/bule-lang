@@ -35,6 +35,7 @@ class LearningItem {
     required this.translations,
     required this.acceptedAnswers,
     required this.segments,
+    required this.register,
   });
   final String id;
   final String locale;
@@ -44,6 +45,7 @@ class LearningItem {
   final Map<String, String> translations;
   final List<String> acceptedAnswers;
   final List<LearningSegment> segments;
+  final String register;
 
   factory LearningItem.fromJson(Map<String, Object?> json) => LearningItem(
     id: json['id']! as String,
@@ -56,6 +58,7 @@ class LearningItem {
     ),
     acceptedAnswers: (json['accepted_answers']! as List<Object?>)
         .cast<String>(),
+    register: json['register'] as String? ?? 'neutral',
     segments: (json['segments']! as List<Object?>)
         .cast<Map<String, Object?>>()
         .map(LearningSegment.fromJson)

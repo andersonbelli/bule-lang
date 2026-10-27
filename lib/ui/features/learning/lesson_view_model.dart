@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/repositories/local_app_repository.dart';
 import '../../../domain/models/content_pack.dart';
@@ -55,12 +56,14 @@ class LessonViewModel extends ChangeNotifier {
   bool flashcardRated = false;
   bool? flashcardKnown;
   String? submittedAnswer;
+  String? selectedChoice;
   GradeResult? gradeResult;
   AnswerFeedback feedback = AnswerFeedback.none;
   bool _completionRecorded = false;
   final Set<String> missedItemIds = {};
   bool audioPlaying = false;
   String? speakingText;
+  bool autoPlayAudio = true;
 
   Exercise? get currentExercise =>
       currentIndex < exercises.length ? exercises[currentIndex] : null;
@@ -95,11 +98,13 @@ class LessonViewModel extends ChangeNotifier {
     if (item != null) progress = await _repository.encounter(item.id);
     loading = false;
     notifyListeners();
+    await _playCurrentIfEnabled();
   }
 
-  void revealTranslation() {
+  Future<void> revealTranslation() async {
     translationRevealed = true;
     notifyListeners();
+    await _playCurrentIfEnabled();
   }
 
   Future<void> rateFlashcard(bool knewIt) async {
@@ -107,6 +112,7 @@ class LessonViewModel extends ChangeNotifier {
     progress = await _repository.encounter(item.id);
     flashcardRated = true;
     flashcardKnown = knewIt;
+    await SystemSound.play(SystemSoundType.click);
     notifyListeners();
   }
 
@@ -130,10 +136,22 @@ class LessonViewModel extends ChangeNotifier {
               ? AnswerFeedback.correct
               : AnswerFeedback.almostCorrect
         : AnswerFeedback.incorrect;
+    await SystemSound.play(
+      result.correct ? SystemSoundType.click : SystemSoundType.alert,
+    );
     notifyListeners();
+    await speechReader.stop();
+    await _speakText(item.text);
   }
 
   Future<void> submitChoice(String answer) => submitTypedAnswer(answer);
+
+  Future<void> selectChoice(String answer) async {
+    selectedChoice = answer;
+    await SystemSound.play(SystemSoundType.click);
+    await speakText(answer);
+    notifyListeners();
+  }
 
   Future<void> acceptSelfAssessment() async {
     final item = currentItem!;
@@ -193,6 +211,10 @@ class LessonViewModel extends ChangeNotifier {
 
   Future<void> speakText(String text) async {
     if (audioPlaying) return;
+    await _speakText(text);
+  }
+
+  Future<void> _speakText(String text) async {
     speakingText = text;
     notifyListeners();
     await speechReader.speak(
@@ -209,6 +231,7 @@ class LessonViewModel extends ChangeNotifier {
     flashcardRated = false;
     flashcardKnown = null;
     submittedAnswer = null;
+    selectedChoice = null;
     gradeResult = null;
     feedback = AnswerFeedback.none;
     final item = currentItem;
@@ -218,6 +241,24 @@ class LessonViewModel extends ChangeNotifier {
       _completionRecorded = true;
     }
     notifyListeners();
+    await _playCurrentIfEnabled();
+  }
+
+  Future<void> toggleAutoPlay() async {
+    autoPlayAudio = !autoPlayAudio;
+    if (!autoPlayAudio) {
+      await speechReader.stop();
+    } else {
+      await _playCurrentIfEnabled();
+    }
+    notifyListeners();
+  }
+
+  Future<void> _playCurrentIfEnabled() async {
+    final item = currentItem;
+    if (!autoPlayAudio || item == null || isComplete) return;
+    await speechReader.stop();
+    await _speakText(item.text);
   }
 
   void _queueRetry(String itemId) {
